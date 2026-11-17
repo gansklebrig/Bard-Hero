@@ -1,0 +1,50 @@
+name: Test
+
+# Bei jedem Hochladen: Code prüfen, alle Lieder musikalisch prüfen, das Spiel ohne Bildschirm durchspielen
+# (Solo, Duell, 3+3-Controller, Anschlag-Gitarre, MIDI prüfen, Updates). Erst wenn das grün ist, wird die Version
+# auf „stabil“ gestellt – das holt der Updater im Kanal „Stabil“.
+on:
+  push:
+    branches-ignore: [stabil]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyflakes pygame numpy
+      - name: Code-Prüfung
+        run: bash tests/statisch.sh
+      - name: Lieder prüfen
+        run: python3 tests/lieder_pruefen.py
+      - name: Spiel durchspielen (ohne Bildschirm)
+        run: python3 tests/spiel_test.py /tmp/bh-fotos
+      - name: Installation testen
+        run: |
+          BH_KEIN_DIENST=1 BH_DIR=/tmp/bh-install bash install.sh
+          test -f /tmp/bh-install/bardhero.py && test ! -d /tmp/bh-install/tests
+          BH_KEIN_DIENST=1 BH_DIR=/tmp/bh-install bash install.sh | grep -q "Fertig!"
+          test -d /tmp/bh-install.vorher
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bildschirmfotos
+          path: /tmp/bh-fotos
+
+  stabil:
+    # grün auf main → diese Version bekommen jetzt auch alle im Update-Kanal „Stabil“
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git push origin HEAD:refs/heads/stabil
